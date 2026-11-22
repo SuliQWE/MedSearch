@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { BRANCHES, INITIAL_NOTIFICATIONS, INITIAL_ORDERS, STOCK } from "./seed";
+import { buildBulk, bulkCounts, bulkEnabled, genMedicines } from "./bulk-seed";
+import { BRANCHES, DEMO_USERS, INITIAL_NOTIFICATIONS, INITIAL_ORDERS, MEDICINES, STOCK } from "./seed";
 import type { AppNotification, CargoLine, GlobalRequest, GroupOrder, Order, Shipment, Stock } from "./types";
 
 // Хранилище на встроенном SQLite (node:sqlite, Node >= 22.13), без внешних пакетов.
@@ -82,7 +83,11 @@ function load(): DemoDB {
   const cargoLines = readKv<CargoLine>("cargoLines");
   const shipments = readKv<Shipment>("shipments");
   const seqKv = d.prepare("SELECT json FROM kv WHERE key = ?").all("seq")[0];
-  const state: DemoDB = { stock, orders: fresh ? [...INITIAL_ORDERS] : orders, notifications: fresh ? [...INITIAL_NOTIFICATIONS] : notifications, globals, groups, cargoLines, shipments, seq: Math.max(maxSeq, seqKv ? Number(JSON.parse(seqKv.json)) : 0) };
+  let state: DemoDB = { stock, orders: fresh ? [...INITIAL_ORDERS] : orders, notifications: fresh ? [...INITIAL_NOTIFICATIONS] : notifications, globals, groups, cargoLines, shipments, seq: Math.max(maxSeq, seqKv ? Number(JSON.parse(seqKv.json)) : 0) };
+  if (fresh && bulkEnabled()) {
+    // BULK_SEED=1: вместо маленького демо-набора строим большой тестовый (детерминированно, см. bulk-seed.ts)
+    state = buildBulk({ medicines: genMedicines(bulkCounts().medicines, MEDICINES), baseStock: STOCK, branches: BRANCHES, users: DEMO_USERS });
+  }
   g.__medifinder = state;
   if (fresh) persist();
   return state;
