@@ -145,6 +145,10 @@ export interface GlobalRequest {
   qty: number; // можно 1 упаковку
   comment: string;
   prescriptionAck: boolean; // покупатель понимает: рецептурные требования не обходятся
+  storage?: StorageClass; // условия хранения (из бывшего Cargo)
+  prescription?: boolean; // рецептурный препарат
+  branchId?: string; // желаемая точка выдачи
+  chosenOfferId?: string; // предложение, которое выбрал покупатель
   status: GlobalStatus;
   offers: GlobalOffer[];
   createdAt: string;

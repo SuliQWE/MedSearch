@@ -14,3 +14,14 @@ export async function resetDemo(): Promise<ActionResult> {
     return { ok: true, message: "Демо-данные сброшены к начальным." };
   } catch (e) { return { ok: false, message: e instanceof Error ? e.message : "Ошибка" }; }
 }
+
+/** Заполняет локальные и международные заказы тестовыми данными. Только администратор. */
+export async function fillDemoOrdersAction(): Promise<ActionResult> {
+  try {
+    requireRole("admin");
+    const { fillDemoOrders } = await import("./demo-orders");
+    const r = fillDemoOrders();
+    revalidatePath("/", "layout");
+    return r;
+  } catch (e) { return { ok: false, message: e instanceof Error ? e.message : "Ошибка" }; }
+}

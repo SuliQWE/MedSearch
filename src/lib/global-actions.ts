@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { currentUser, requireRole } from "./auth";
-import { DEMO_USERS } from "./seed";
+import { BRANCHES, DEMO_USERS } from "./seed";
 import { db, nextNumber, notify, persist } from "./store";
 import type { ActionResult, GlobalRequest, GlobalStatus } from "./types";
 
@@ -26,6 +26,9 @@ const createSchema = z.object({
   form: z.string().trim().min(1, "Укажите форму выпуска").max(40),
   qty: z.number({ invalid_type_error: "Укажите количество" }).int().min(1, "Минимум 1 упаковка").max(999),
   comment: z.string().trim().max(500).default(""),
+  storage: z.enum(["room", "cool", "frozen"], { errorMap: () => ({ message: "Выберите условия хранения" }) }),
+  prescription: z.boolean().default(false),
+  branchId: z.string().refine((id) => BRANCHES.some((b) => b.id === id), "Выберите точку выдачи"),
   prescriptionAck: z.literal(true, { errorMap: () => ({ message: "Подтвердите, что понимаете требования к рецептурным препаратам" }) }),
 });
 
@@ -64,8 +67,8 @@ export async function supplierOffer(requestId: string, raw: unknown): Promise<Ac
     const u = requireRole("supplier");
     const r = db().globals.find((x) => x.id === requestId);
     if (!r) return fail("Заявка не найдена.");
-    if (r.status !== "new" && r.status !== "offered") return fail("По этой заявке предложения больше не принимаются.");
-    if (r.offers.some((o) => o.supplierId === u.id && !o.importerDecision)) return fail("Вы уже отправили предложение, ждите проверки импортёра.");
+    if (!["new", "offered", "importer_approved"].includes(r.status)) return fail("По этой заявке предложения больше не принимаются.");
+    if (r.offers.some((o) => o.supplierId === u.id && o.importerDecision !== "rejected")) return fail("Вы уже отправили предложение по этой заявке.");
     const p = offerSchema.safeParse(raw);
     if (!p.success) return fail(p.error.issues[0]?.message ?? "Некорректные данные");
     r.offers.push({ id: `of-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`, supplierId: u.id, ...p.data });
@@ -83,15 +86,16 @@ export async function importerDecide(requestId: string, offerId: string, decisio
     const o = r?.offers.find((x) => x.id === offerId);
     if (!r || !o) return fail("Предложение не найдено.");
     if (o.importerDecision) return fail("Решение уже принято.");
-    if (r.status !== "offered") return fail("Заявка не в статусе проверки.");
+    if (r.status !== "offered" && r.status !== "importer_approved") return fail("Заявка не в статусе проверки.");
     const n = z.string().trim().max(300).safeParse(note);
     if (!n.success) return fail("Заметка слишком длинная.");
     if (decision === "rejected" && n.data.length < 3) return fail("Укажите причину отказа.");
     o.importerDecision = decision;
     o.importerNote = n.data;
     if (decision === "approved") {
-      push(r, "importer_approved", u.id);
-      notify(r.buyerId, `По заявке ${r.number} есть проверенное предложение. Проверьте условия и подтвердите или откажитесь.`);
+      if (r.status !== "importer_approved") push(r, "importer_approved", u.id);
+      const n2 = r.offers.filter((x) => x.importerDecision === "approved").length;
+      notify(r.buyerId, `По заявке ${r.number} проверенных предложений: ${n2}. Выберите подходящее или откажитесь.`);
     } else if (r.offers.every((x) => x.importerDecision === "rejected")) {
       push(r, "importer_rejected", u.id);
       notify(r.buyerId, `По заявке ${r.number} импортёр не смог подтвердить ввоз. ${n.data}`);
@@ -101,12 +105,19 @@ export async function importerDecide(requestId: string, offerId: string, decisio
   } catch (e) { return err(e); }
 }
 
-export async function buyerGlobalDecide(requestId: string, decision: "confirm" | "decline"): Promise<ActionResult> {
+export async function buyerGlobalDecide(requestId: string, decision: "confirm" | "decline", offerId?: string): Promise<ActionResult> {
   try {
     const u = requireRole("buyer");
     const r = db().globals.find((x) => x.id === requestId);
     if (!r || r.buyerId !== u.id) return fail("Нет доступа.");
     if (r.status !== "importer_approved") return fail("Сейчас нечего подтверждать.");
+    if (decision === "confirm") {
+      const o = r.offers.find((x) => x.id === offerId && x.importerDecision === "approved");
+      if (!o) return fail("Выберите одно из проверенных предложений.");
+      r.chosenOfferId = o.id;
+      notify(o.supplierId, `Покупатель выбрал ваше предложение по заявке ${r.number}.`);
+      for (const x of r.offers.filter((y) => y.importerDecision === "approved" && y.id !== o.id)) notify(x.supplierId, `По заявке ${r.number} покупатель выбрал другое предложение.`);
+    }
     push(r, decision === "confirm" ? "buyer_confirmed" : "buyer_declined", u.id);
     notifyRole("importer", `Покупатель ${decision === "confirm" ? "подтвердил" : "отклонил"} условия по заявке ${r.number}.`);
     commit();

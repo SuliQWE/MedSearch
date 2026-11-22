@@ -2,68 +2,73 @@ import { redirect } from "next/navigation";
 import { OfferForm } from "@/components/GlobalForms";
 import { GlobalBadge } from "@/components/GlobalBadge";
 import { NotificationsPanel } from "@/components/NotificationsPanel";
-import { GroupBadge } from "@/components/Badges";
-import { GroupOfferForm } from "@/components/GroupForms";
 import { currentUser } from "@/lib/auth";
 import { db } from "@/lib/store";
-import { formatKgs } from "@/lib/status";
+import { STORAGE_LABEL, formatDateTime, formatKgs } from "@/lib/status";
+import type { GlobalRequest } from "@/lib/types";
 
 export const metadata = { title: "Кабинет поставщика — MediFinder" };
 
-// Поставщик видит только обезличенный спрос: без покупателей и без комментариев.
+// Одинаковые препараты (название + дозировка + форма) сворачиваются в одну карточку.
+const norm = (s: string) => s.toLowerCase().replace(/ё/g, "е").replace(/\s+/g, " ").trim();
+const keyOf = (g: GlobalRequest) => `${norm(g.medicineName)}|${norm(g.dosage).replace(/,/g, ".").replace(/\s/g, "")}|${norm(g.form)}`;
+
+// Поставщик видит все международные заказы в одном списке и принимает любые, какие может поставить.
+// Покупатели обезличены: ни имён, ни комментариев.
 export default function SupplierPage() {
   const u = currentUser();
   if (!u || u.role !== "supplier") redirect("/login");
-  const open = db().globals.filter((g) => g.status === "new" || g.status === "offered");
-  const mineOffers = db().globals.flatMap((g) => g.offers.filter((o) => o.supplierId === u.id).map((o) => ({ g, o })));
+  const all = db().globals;
+  const open = all.filter((g) => ["new", "offered", "importer_approved"].includes(g.status));
+  const mineOffers = all.flatMap((g) => g.offers.filter((o) => o.supplierId === u.id).map((o) => ({ g, o })));
   const notes = db().notifications.filter((n) => n.userId === u.id).slice(0, 10);
-  const demand = new Map<string, number>();
-  for (const g of open) { const k = `${g.medicineName} ${g.dosage}, ${g.form}`; demand.set(k, (demand.get(k) ?? 0) + g.qty); }
-  const groups = db().groups.filter((g) => g.status === "open" || g.status === "offered");
+
+  const bucket = new Map<string, GlobalRequest[]>();
+  for (const g of open) bucket.set(keyOf(g), [...(bucket.get(keyOf(g)) ?? []), g]);
+  const cards = [...bucket.values()].map((list) => ({ head: list[0], list, total: list.reduce((s, g) => s + g.qty, 0) }));
+
   return (
     <div className="container-page space-y-8 py-6">
       <div><h1 className="text-2xl font-bold sm:text-3xl">Кабинет поставщика</h1><p className="text-sm text-ink-500">Демо. Персональные данные покупателей вам не передаются.</p></div>
       <section>
-        <h2 className="mb-3 text-xl font-bold">Спрос (агрегат)</h2>
-        {demand.size === 0 ? <div className="card text-ink-600">Открытого спроса нет.</div> : <ul className="grid gap-2 sm:grid-cols-2">{[...demand].map(([k, n]) => <li key={k} className="card py-3 text-sm"><b>{k}</b><span className="ml-2 text-ink-500">всего {n} уп.</span></li>)}</ul>}
-      </section>
-      <section>
-        <h2 className="mb-3 text-xl font-bold">Заявки, ожидающие предложений</h2>
-        {open.length === 0 ? <div className="card text-ink-600">Нет заявок.</div> : (
+        <h2 className="mb-1 text-xl font-bold">Международные заказы ({open.length})</h2>
+        <p className="mb-3 text-sm text-ink-600">Все заказы в одном списке. Выберите те, которые можете поставить, и отправьте предложение. Одинаковые препараты объединены в одну карточку.</p>
+        {cards.length === 0 ? <div className="card text-ink-600">Открытых заказов нет.</div> : (
           <ul className="space-y-3">
-            {open.map((g) => {
-              const sent = g.offers.some((o) => o.supplierId === u.id && !o.importerDecision);
-              return (
-                <li key={g.id} className="card space-y-2">
-                  <div className="flex flex-wrap items-center justify-between gap-2"><p className="font-semibold">{g.number} · {g.medicineName} {g.dosage}, {g.form} × {g.qty}</p><GlobalBadge status={g.status} /></div>
-                  {sent ? <p className="text-sm text-ink-600">Ваше предложение отправлено и ждёт проверки импортёром.</p> : <OfferForm requestId={g.id} />}
-                </li>
-              );
-            })}
+            {cards.map(({ head, list, total }) => (
+              <li key={keyOf(head)} className="card space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-semibold">{head.medicineName} {head.dosage}, {head.form}</p>
+                  <span className="text-sm text-ink-600">всего {total} уп. · заказов {list.length}</span>
+                </div>
+                <ul className="space-y-2">
+                  {list.map((g) => {
+                    const mine = g.offers.find((o) => o.supplierId === u.id && o.importerDecision !== "rejected");
+                    return (
+                      <li key={g.id} className="rounded-xl bg-ink-50 p-3 text-sm">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span>{g.number} · {g.qty} уп. · {formatDateTime(g.createdAt)}{g.storage && ` · ${STORAGE_LABEL[g.storage]}`}{g.prescription && " · рецептурный"}</span>
+                          <GlobalBadge status={g.status} />
+                        </div>
+                        {mine ? <p className="mt-2 text-ink-600">{mine.importerDecision === "approved" ? "Ваше предложение одобрено импортёром, ждём выбора покупателя." : "Ваше предложение отправлено и ждёт проверки импортёром."}</p> : (
+                          <details className="mt-2">
+                            <summary className="cursor-pointer font-medium text-brand-700">Могу поставить</summary>
+                            <div className="mt-2"><OfferForm requestId={g.id} /></div>
+                          </details>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </li>
+            ))}
           </ul>
         )}
       </section>
       <section>
         <h2 className="mb-3 text-xl font-bold">Мои предложения</h2>
         {mineOffers.length === 0 ? <div className="card text-ink-600">Вы ещё не отправляли предложений.</div> : (
-          <ul className="space-y-2">{mineOffers.map(({ g, o }) => <li key={o.id} className="card py-3 text-sm">{g.number} · {formatKgs(o.pricePerPack)} · {o.leadTimeDays} дн. · {o.importerDecision === "approved" ? "одобрено импортёром" : o.importerDecision === "rejected" ? "отклонено импортёром" : "на проверке"}</li>)}</ul>
-        )}
-      </section>
-      <section>
-        <h2 className="mb-3 text-xl font-bold">Group Orders: общий спрос</h2>
-        {groups.length === 0 ? <div className="card text-ink-600">Открытых групп нет.</div> : (
-          <ul className="space-y-3">
-            {groups.map((g) => {
-              const vol = g.members.reduce((s, m) => s + m.qty, 0);
-              const sent = g.offers.some((o) => o.supplierId === u.id && !o.importerDecision);
-              return (
-                <li key={g.id} className="card space-y-2">
-                  <div className="flex flex-wrap items-center justify-between gap-2"><p className="font-semibold">{g.number} · {g.medicineName} {g.dosage}, {g.form} · общий объём {vol} уп.</p><GroupBadge status={g.status} /></div>
-                  {sent ? <p className="text-sm text-ink-600">Ваше предложение отправлено и ждёт проверки импортёром.</p> : <GroupOfferForm groupId={g.id} maxVolume={vol} />}
-                </li>
-              );
-            })}
-          </ul>
+          <ul className="space-y-2">{mineOffers.map(({ g, o }) => <li key={o.id} className="card py-3 text-sm">{g.number} · {g.medicineName} {g.dosage} · {formatKgs(o.pricePerPack)} · {o.leadTimeDays} дн. · {o.importerDecision === "approved" ? "одобрено импортёром" : o.importerDecision === "rejected" ? "отклонено импортёром" : "на проверке"}</li>)}</ul>
         )}
       </section>
       <NotificationsPanel notes={notes} />

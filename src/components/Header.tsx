@@ -20,9 +20,7 @@ export function Header({ user, unread }: { user: DemoUser | null; unread: number
 
   const nav = [
     { href: "/catalog", label: "Каталог" },
-    { href: "/global", label: "Global" },
-    { href: "/group", label: "Group Orders" },
-    { href: "/cargo", label: "Cargo" },
+    { href: "/global", label: "Международный заказ" },
   ];
 
   async function doLogout() {

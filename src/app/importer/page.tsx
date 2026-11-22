@@ -18,8 +18,11 @@ export default function ImporterPage() {
   const u = currentUser();
   if (!u || u.role !== "importer") redirect("/login");
   const all = db().globals;
-  const queue = all.filter((g) => g.status === "offered");
-  const rest = all.filter((g) => g.status !== "offered");
+  const hasPending = (g: (typeof all)[number]) => ["offered", "importer_approved"].includes(g.status) && g.offers.some((o) => !o.importerDecision);
+  const queue = all.filter(hasPending);
+  const rest = all.filter((g) => !hasPending(g));
+  const confirmed = all.filter((g) => g.status === "buyer_confirmed");
+  const confClasses = [...new Set(confirmed.map((g) => g.storage ?? "room"))] as StorageClass[];
   const notes = db().notifications.filter((n) => n.userId === u.id).slice(0, 10);
   const groups = db().groups;
   const lines = db().cargoLines;
@@ -37,6 +40,7 @@ export default function ImporterPage() {
             {queue.map((g) => (
               <li key={g.id} className="card space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2"><p className="font-semibold">{g.number} · {g.medicineName} {g.dosage}, {g.form} × {g.qty}</p><GlobalBadge status={g.status} /></div>
+                <p className="text-sm text-ink-600">{g.storage ? STORAGE_LABEL[g.storage] : "условия хранения не указаны"} · {g.prescription ? "рецептурный: проверьте требования до одобрения" : "безрецептурный"} · точка выдачи: {bn(g.branchId)}</p>
                 {g.comment && <p className="text-sm text-ink-600">Комментарий покупателя: {g.comment}</p>}
                 {g.offers.filter((o) => !o.importerDecision).map((o) => (
                   <div key={o.id} className="space-y-2 rounded-xl bg-ink-50 p-3 text-sm">
@@ -54,6 +58,13 @@ export default function ImporterPage() {
         {rest.length === 0 ? <div className="card text-ink-600">Пока пусто.</div> : <ul className="space-y-2">{rest.map((g) => <li key={g.id} className="card flex flex-wrap items-center justify-between gap-2 py-3 text-sm"><span>{g.number} · {g.medicineName} {g.dosage} × {g.qty} · {formatDateTime(g.createdAt)}</span><GlobalBadge status={g.status} /></li>)}</ul>}
       </section>
       <section>
+        <h2 className="mb-3 text-xl font-bold">Подтверждённые покупателями ({confirmed.length})</h2>
+        <p className="mb-3 text-sm text-ink-600">Препараты с разными условиями хранения в одну отправку не объединяйте: они сгруппированы по классу.</p>
+        {confirmed.length === 0 ? <div className="card text-ink-600">Пока нет подтверждённых заказов.</div> : (
+          <div className="space-y-3">{confClasses.map((c) => <div key={c} className="card"><p className="mb-2 text-sm font-semibold">{STORAGE_LABEL[c]}</p><ul className="space-y-1 text-sm">{confirmed.filter((g) => (g.storage ?? "room") === c).map((g) => <li key={g.id}>{g.number} · {g.medicineName} {g.dosage} × {g.qty} → {bn(g.branchId)}</li>)}</ul></div>)}</div>
+        )}
+      </section>
+      {groups.length > 0 && <section>
         <h2 className="mb-3 text-xl font-bold">Group Orders ({groups.filter((g) => g.status === "open" || g.status === "offered").length} активных)</h2>
         {groups.length === 0 ? <div className="card text-ink-600">Групп пока нет.</div> : (
           <ul className="space-y-3">
@@ -75,8 +86,8 @@ export default function ImporterPage() {
             })}
           </ul>
         )}
-      </section>
-      <section>
+      </section>}
+      {lines.length > 0 && <><section>
         <h2 className="mb-3 text-xl font-bold">Cargo: заказы на проверке</h2>
         {lines.filter((l) => l.status === "requested").length === 0 ? <div className="card text-ink-600">Нет заказов на проверку.</div> : (
           <ul className="space-y-3">
@@ -122,7 +133,7 @@ export default function ImporterPage() {
             })}
           </ul>
         )}
-      </section>
+      </section></>}
       <NotificationsPanel notes={notes} />
     </div>
   );
