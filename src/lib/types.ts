@@ -25,6 +25,7 @@ export interface Medicine {
   categories: string[];
   synonyms: string[];
   prescription: boolean;
+  imageUrl?: string; // ссылка на картинку упаковки (Supabase Storage)
 }
 
 export interface Pharmacy {

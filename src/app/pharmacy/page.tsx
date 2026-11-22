@@ -5,13 +5,15 @@ import { ProposeQty, StockRow } from "@/components/PharmacyControls";
 import { StatusBadge } from "@/components/StatusBadge";
 import { pharmacyConfirm, pharmacyIssue, pharmacyMarkReady, pharmacyReject, sweepExpired } from "@/lib/actions";
 import { currentUser } from "@/lib/auth";
-import { BRANCHES, MEDICINES, PHARMACIES } from "@/lib/seed";
+import { getMedicines } from "@/lib/catalog";
+import { BRANCHES, PHARMACIES } from "@/lib/seed";
 import { db } from "@/lib/store";
 import { formatDateTime, formatKgs } from "@/lib/status";
 
 export const metadata = { title: "Кабинет аптеки — MediFinder" };
 
 export default async function PharmacyPage() {
+  const MEDICINES = await getMedicines();
   const u = currentUser();
   if (!u || u.role !== "pharmacy" || !u.pharmacyId) redirect("/login");
   await sweepExpired();

@@ -4,13 +4,15 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { NotificationsPanel } from "@/components/NotificationsPanel";
 import { buyerAcceptProposal, buyerCancel, sweepExpired } from "@/lib/actions";
 import { currentUser } from "@/lib/auth";
-import { BRANCHES, MEDICINES, PHARMACIES } from "@/lib/seed";
+import { getMedicines } from "@/lib/catalog";
+import { BRANCHES, PHARMACIES } from "@/lib/seed";
 import { db } from "@/lib/store";
 import { formatDateTime, formatKgs } from "@/lib/status";
 
 export const metadata = { title: "Мои заказы — MediFinder" };
 
 export default async function AccountPage() {
+  const MEDICINES = await getMedicines();
   const u = currentUser();
   if (!u) redirect("/login");
   if (u.role !== "buyer") redirect("/login");

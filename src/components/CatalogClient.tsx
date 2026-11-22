@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Filter, MapPin, Search, X } from "lucide-react";
 import { CategoryIcon } from "./CategoryIcon";
+import { MedicineImage } from "./MedicineImage";
 import { LocationBar } from "./LocationBar";
 import { useApp } from "./Providers";
 import { offersFor, searchMedicines } from "@/lib/search";
@@ -116,9 +117,12 @@ export function CatalogClient({ medicines, categories, stock, pharmacyNames, ini
                   <motion.li key={m.id} layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} whileHover={{ y: -2 }}>
                     <Link href={`/medicine/${m.id}`} className="card block h-full transition hover:shadow-lift">
                       <div className="flex items-start justify-between gap-2">
-                        <div>
+                        <div className="flex items-start gap-3">
+                          {m.imageUrl && <MedicineImage src={m.imageUrl} alt={`${m.name} ${m.dosage}`} size={56} />}
+                          <div>
                           <h3 className="font-semibold">{m.name} <span className="font-normal text-ink-500">{m.dosage}</span></h3>
                           <p className="text-sm text-ink-500">{m.inn} · {m.form}</p>
+                          </div>
                         </div>
                         {m.prescription && <span className="shrink-0 rounded-full bg-sky-50 px-2 py-0.5 text-xs font-semibold text-sky-800 ring-1 ring-sky-200">Рецептурный</span>}
                       </div>

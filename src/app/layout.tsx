@@ -20,6 +20,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <Providers>
           <Header user={user} unread={unread} />
+          <div className="border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-center text-xs text-amber-900">
+            Демо-версия: аптеки, цены и остатки — тестовые и не отражают реальные данные.
+          </div>
           <main>{children}</main>
           <footer className="mt-16 border-t border-ink-100 bg-white py-8 text-sm text-ink-500">
             <div className="container-page flex flex-col gap-2 sm:flex-row sm:justify-between">

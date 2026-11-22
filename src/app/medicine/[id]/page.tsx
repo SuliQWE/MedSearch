@@ -3,11 +3,14 @@ import { notFound } from "next/navigation";
 import { ChevronLeft, FileWarning } from "lucide-react";
 import { OffersList } from "@/components/OffersList";
 import { sweepExpired } from "@/lib/actions";
-import { CATEGORIES, MEDICINES, PHARMACIES } from "@/lib/seed";
+import { MedicineImage } from "@/components/MedicineImage";
+import { getMedicines } from "@/lib/catalog";
+import { CATEGORIES, PHARMACIES } from "@/lib/seed";
 import { searchMedicines } from "@/lib/search";
 import { db } from "@/lib/store";
 
 export default async function MedicinePage({ params }: { params: { id: string } }) {
+  const MEDICINES = await getMedicines();
   const m = MEDICINES.find((x) => x.id === params.id);
   if (!m) notFound();
   await sweepExpired();
@@ -20,7 +23,7 @@ export default async function MedicinePage({ params }: { params: { id: string } 
     <div className="container-page space-y-6 py-6">
       <Link href="/catalog" className="inline-flex min-h-[44px] items-center gap-1 text-sm text-ink-600 hover:text-brand-700"><ChevronLeft size={16} />Каталог</Link>
       <section className="card">
-        <h1 className="text-2xl font-bold">{m.name} <span className="font-normal text-ink-500">{m.dosage}</span></h1>
+        <div className="flex items-start gap-4">{m.imageUrl && <MedicineImage src={m.imageUrl} alt={`${m.name} ${m.dosage}`} size={112} />}<h1 className="text-2xl font-bold">{m.name} <span className="font-normal text-ink-500">{m.dosage}</span></h1></div>
         <dl className="mt-4 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
           <div><dt className="text-ink-500">Действующее вещество</dt><dd className="font-medium">{m.inn}</dd></div>
           <div><dt className="text-ink-500">Форма выпуска</dt><dd className="font-medium">{m.form}</dd></div>
@@ -34,7 +37,7 @@ export default async function MedicinePage({ params }: { params: { id: string } 
         {m.prescription && (
           <p className="mt-4 flex items-start gap-2 rounded-xl bg-sky-50 p-3 text-sm text-sky-900"><FileWarning size={18} className="mt-0.5 shrink-0" />Рецептурный препарат. Аптека проверит рецепт при выдаче; платформа не обходит рецептурные требования.</p>
         )}
-        <p className="mt-3 text-xs text-ink-400">Упаковка: фото отсутствует (нет подтверждённого источника).</p>
+        {!m.imageUrl && <p className="mt-3 text-xs text-ink-400">Упаковка: фото отсутствует.</p>}
       </section>
       <section>
         <h2 className="mb-3 text-xl font-bold">Где купить</h2>

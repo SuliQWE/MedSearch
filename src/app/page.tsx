@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { Boxes, Globe2, MapPin, Search, ShieldCheck, Users } from "lucide-react";
 import { CategoryIcon } from "@/components/CategoryIcon";
-import { CATEGORIES, MEDICINES } from "@/lib/seed";
+import { MedicineImage } from "@/components/MedicineImage";
+import { getMedicines } from "@/lib/catalog";
+import { CATEGORIES } from "@/lib/seed";
 
 const STEPS = [
   { t: "Найдите", d: "Введите название или действующее вещество. Поиск простит опечатки." },
@@ -15,7 +17,8 @@ const SOON = [
   { icon: Boxes, t: "Cargo", d: "Разные препараты одного поставщика в одной отправке, с проверкой импортёром и выдачей в вашем городе." },
 ];
 
-export default function Home() {
+export default async function Home() {
+  const MEDICINES = await getMedicines();
   return (
     <>
       <section className="bg-gradient-to-b from-brand-50 to-ink-50">
@@ -49,7 +52,7 @@ export default function Home() {
           <h2 className="mb-4 text-xl font-bold sm:text-2xl">Часто ищут</h2>
           <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {MEDICINES.slice(0, 4).map((m) => (
-              <li key={m.id}><Link href={`/medicine/${m.id}`} className="card block transition hover:shadow-lift"><p className="font-semibold">{m.name}</p><p className="text-sm text-ink-500">{m.dosage} · {m.form}</p></Link></li>
+              <li key={m.id}><Link href={`/medicine/${m.id}`} className="card block transition hover:shadow-lift">{m.imageUrl && <div className="mb-2"><MedicineImage src={m.imageUrl} alt={`${m.name} ${m.dosage}`} size={72} /></div>}<p className="font-semibold">{m.name}</p><p className="text-sm text-ink-500">{m.dosage} · {m.form}</p></Link></li>
             ))}
           </ul>
         </section>

@@ -1,7 +1,10 @@
 import { redirect } from "next/navigation";
 import { AdminReset } from "@/components/AdminReset";
+import { DeleteMedicineButton, MedicineForm, SeedButton } from "@/components/MedicineAdmin";
+import { MedicineImage } from "@/components/MedicineImage";
+import { getCatalog } from "@/lib/catalog";
 import { currentUser } from "@/lib/auth";
-import { BRANCHES, DEMO_USERS, MEDICINES, PHARMACIES } from "@/lib/seed";
+import { BRANCHES, CATEGORIES, DEMO_USERS, PHARMACIES } from "@/lib/seed";
 import { db } from "@/lib/store";
 import { CARGO_LABEL, GLOBAL_LABEL, GROUP_LABEL, STATUS_LABEL } from "@/lib/status";
 
@@ -15,10 +18,11 @@ function count<T extends string>(items: T[], labels: Record<T, string>) {
 }
 
 // Аналитика только агрегатная: без имён, комментариев и иных персональных данных покупателей.
-export default function AdminPage() {
+export default async function AdminPage() {
   const u = currentUser();
   if (!u || u.role !== "admin") redirect("/login");
   const d = db();
+  const { medicines: MEDICINES, source, error } = await getCatalog();
   const blocks = [
     { title: "Заказы Local", rows: count(d.orders.map((o) => o.status), STATUS_LABEL) },
     { title: "Заявки Global", rows: count(d.globals.map((g) => g.status), GLOBAL_LABEL) },
@@ -44,10 +48,34 @@ export default function AdminPage() {
         <h2 className="mb-3 text-xl font-bold">Аптеки и филиалы</h2>
         <ul className="space-y-2">{PHARMACIES.map((p) => <li key={p.id} className="card py-3 text-sm"><b>{p.name}</b><span className="ml-2 text-ink-500">{BRANCHES.filter((b) => b.pharmacyId === p.id).map((b) => `${b.city}, ${b.name}`).join("; ")}</span></li>)}</ul>
       </section>
-      <section>
-        <h2 className="mb-3 text-xl font-bold">Каталог</h2>
-        <ul className="grid gap-2 sm:grid-cols-2">{MEDICINES.map((m) => <li key={m.id} className="card py-3 text-sm"><b>{m.name} {m.dosage}</b>, {m.form}{m.prescription && <span className="ml-2 text-xs text-amber-800">рецептурный</span>}</li>)}</ul>
-        <p className="mt-2 text-xs text-ink-500">Каталог в демо хранится в коде (src/lib/seed.ts). Редактирование из интерфейса появится после подключения базы данных.</p>
+      <section className="space-y-4">
+        <h2 className="text-xl font-bold">Каталог препаратов</h2>
+        {source === "seed" ? (
+          <div className="card space-y-1 border-l-4 border-amber-400 text-sm text-ink-700">
+            <p className="font-semibold">Supabase не подключён: каталог берётся из тестового набора в коде и не редактируется.</p>
+            {error && <p className="text-red-700">Ошибка подключения: {error}</p>}
+            <p>Чтобы включить редактирование и загрузку картинок, выполните миграцию <code>supabase/migrations/0003_catalog.sql</code> и задайте переменные окружения (см. README).</p>
+          </div>
+        ) : (
+          <>
+            <div className="card space-y-3"><h3 className="font-bold">Добавить препарат</h3><MedicineForm categories={CATEGORIES} /></div>
+            <ul className="space-y-2">
+              {MEDICINES.map((m) => (
+                <li key={m.id} className="card py-3">
+                  <details>
+                    <summary className="flex cursor-pointer flex-wrap items-center gap-3 text-sm">
+                      <MedicineImage src={m.imageUrl} alt={`${m.name} ${m.dosage}`} size={44} />
+                      <span><b>{m.name} {m.dosage}</b>, {m.form}{m.prescription && <span className="ml-2 text-xs text-amber-800">рецептурный</span>}</span>
+                      <span className="ml-auto text-xs text-brand-700">Изменить</span>
+                    </summary>
+                    <div className="mt-4 space-y-3 border-t border-ink-100 pt-4"><MedicineForm categories={CATEGORIES} medicine={m} /><DeleteMedicineButton id={m.id} /></div>
+                  </details>
+                </li>
+              ))}
+            </ul>
+            <div className="flex flex-wrap items-center gap-3"><SeedButton /><p className="text-xs text-ink-500">Цену и остаток по препарату задаёт аптека в своём кабинете (раздел «Остатки и цены»).</p></div>
+          </>
+        )}
       </section>
       <section>
         <h2 className="mb-3 text-xl font-bold">Демо-пользователи</h2>
