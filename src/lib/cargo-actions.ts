@@ -92,7 +92,7 @@ export async function addLinesToShipment(lineIds: string[]): Promise<ActionResul
     const classes = new Set(ls.map((l) => l.storage));
     if (classes.size > 1) return fail("Нельзя объединять препараты с разными условиями хранения. Выберите заказы одного класса.");
     const storage = ls[0].storage;
-    let sh = db().shipments.find((s) => s.status === "forming" && s.storage === storage);
+    let sh = db().shipments.find((s) => s.status === "forming" && s.storage === storage && s.kind !== "global");
     if (!sh) {
       sh = { id: `sh-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`, number: nextNumber("SH"), storage, status: "forming", createdAt: new Date().toISOString(), history: [{ status: "forming", at: new Date().toISOString(), by: u.id }] };
       db().shipments.unshift(sh);

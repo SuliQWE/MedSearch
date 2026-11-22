@@ -122,6 +122,11 @@ export type GlobalStatus =
   | "importer_approved" // импортёр проверил: ввоз возможен, ждёт решения покупателя
   | "importer_rejected" // импортёр отказал (причина в заметке)
   | "buyer_confirmed" // покупатель подтвердил условия
+  | "in_shipment" // включён в отправку
+  | "in_transit" // в пути
+  | "arrived" // отправка прибыла
+  | "ready_for_pickup" // распределено по точке выдачи
+  | "issued" // выдан покупателю
   | "buyer_declined"
   | "cancelled";
 
@@ -149,6 +154,9 @@ export interface GlobalRequest {
   prescription?: boolean; // рецептурный препарат
   branchId?: string; // желаемая точка выдачи
   chosenOfferId?: string; // предложение, которое выбрал покупатель
+  shipmentId?: string; // отправка, в которую включена заявка
+  altBranchId?: string; // альтернативная точка выдачи, только с согласия покупателя
+  altStatus?: "proposed" | "accepted" | "declined";
   status: GlobalStatus;
   offers: GlobalOffer[];
   createdAt: string;
@@ -233,6 +241,7 @@ export interface Shipment {
   id: string;
   number: string;
   storage: StorageClass; // одна логистическая группа на отправку
+  kind?: "global"; // отправка из международных заказов (у старых отправок Cargo поля нет)
   status: ShipmentStatus;
   createdAt: string;
   history: { status: ShipmentStatus; at: string; by: string }[];

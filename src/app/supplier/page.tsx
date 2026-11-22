@@ -21,6 +21,7 @@ export default function SupplierPage() {
   const all = db().globals;
   const open = all.filter((g) => ["new", "offered", "importer_approved"].includes(g.status));
   const mineOffers = all.flatMap((g) => g.offers.filter((o) => o.supplierId === u.id).map((o) => ({ g, o })));
+  const handed = all.filter((g) => g.chosenOfferId && g.offers.some((o) => o.id === g.chosenOfferId && o.supplierId === u.id));
   const notes = db().notifications.filter((n) => n.userId === u.id).slice(0, 10);
 
   const bucket = new Map<string, GlobalRequest[]>();
@@ -66,9 +67,16 @@ export default function SupplierPage() {
         )}
       </section>
       <section>
+        <h2 className="mb-1 text-xl font-bold">Заказы, переданные вам ({handed.length})</h2>
+        <p className="mb-3 text-sm text-ink-600">Покупатель выбрал ваше предложение. Дальше заказ ведёт импортёр, статус обновляется автоматически.</p>
+        {handed.length === 0 ? <div className="card text-ink-600">Пока нет выбранных вам предложений.</div> : (
+          <ul className="space-y-2">{handed.map((g) => <li key={g.id} className="card flex flex-wrap items-center justify-between gap-2 py-3 text-sm"><span>{g.number} · {g.medicineName} {g.dosage} × {g.qty}</span><GlobalBadge status={g.status} /></li>)}</ul>
+        )}
+      </section>
+      <section>
         <h2 className="mb-3 text-xl font-bold">Мои предложения</h2>
         {mineOffers.length === 0 ? <div className="card text-ink-600">Вы ещё не отправляли предложений.</div> : (
-          <ul className="space-y-2">{mineOffers.map(({ g, o }) => <li key={o.id} className="card py-3 text-sm">{g.number} · {g.medicineName} {g.dosage} · {formatKgs(o.pricePerPack)} · {o.leadTimeDays} дн. · {o.importerDecision === "approved" ? "одобрено импортёром" : o.importerDecision === "rejected" ? "отклонено импортёром" : "на проверке"}</li>)}</ul>
+          <ul className="space-y-2">{mineOffers.map(({ g, o }) => <li key={o.id} className="card py-3 text-sm">{g.number} · {g.medicineName} {g.dosage} · {formatKgs(o.pricePerPack)} · {o.leadTimeDays} дн. · {g.chosenOfferId === o.id ? "выбрано покупателем" : g.chosenOfferId && o.importerDecision === "approved" ? "покупатель выбрал другое предложение" : o.importerDecision === "approved" ? "одобрено импортёром" : o.importerDecision === "rejected" ? "отклонено импортёром" : "на проверке"}</li>)}</ul>
         )}
       </section>
       <NotificationsPanel notes={notes} />

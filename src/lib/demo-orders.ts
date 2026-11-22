@@ -1,6 +1,6 @@
 import { DEMO_USERS } from "./seed";
 import { db, nextNumber, notify, persist } from "./store";
-import type { GlobalOffer, GlobalRequest, GlobalStatus, Order, OrderStatus } from "./types";
+import type { GlobalOffer, GlobalRequest, GlobalStatus, Order, OrderStatus, Shipment } from "./types";
 
 // ВСЕ ДАННЫЕ ТЕСТОВЫЕ. Препараты в каталоге не создаются: локальные заказы берут уже существующие позиции склада.
 const MARK = "[демо]";
@@ -42,7 +42,7 @@ export function fillDemoOrders(): FillResult {
 
   /* ---------- Международные заказы: единый поток, статусы по всем этапам ---------- */
   // Первые три — один и тот же препарат от разных покупателей, поставщик увидит их одной карточкой.
-  type Spec = { storage?: "room" | "cool" | "frozen"; rx?: boolean; branch?: string; chosen?: number; buyer: string; name: string; dosage: string; form: string; qty: number; status: GlobalStatus; offers?: Partial<GlobalOffer>[]; h: number };
+  type Spec = { storage?: "room" | "cool" | "frozen"; rx?: boolean; branch?: string; chosen?: number; buyer: string; name: string; dosage: string; form: string; qty: number; status: GlobalStatus; offers?: Partial<GlobalOffer>[]; h: number; ship?: string; alt?: { branch: string; status: "proposed" | "accepted" | "declined" } };
   const specs: Spec[] = [
     { buyer: buyer.id, storage: "cool", rx: true, name: "Семаглутид", dosage: "1 мг", form: "Раствор для инъекций", qty: 2, status: "new", h: 5 },
     { buyer: "u-demo-b2", storage: "cool", rx: true, name: "Семаглутид", dosage: "1 мг", form: "Раствор для инъекций", qty: 1, status: "new", h: 9 },
@@ -54,8 +54,17 @@ export function fillDemoOrders(): FillResult {
     { buyer: "u-demo-b2", storage: "cool", rx: true, name: "Дупилумаб", dosage: "300 мг", form: "Раствор для инъекций", qty: 1, status: "importer_rejected", h: 70, offers: [{ supplierId: sup.id, pricePerPack: 120000, leadTimeDays: 30, note: "", importerDecision: "rejected", importerNote: "Нет документов на ввоз" }] },
     { buyer: buyer.id, storage: "cool", rx: true, name: "Дулаглутид", dosage: "1,5 мг", form: "Раствор для инъекций", qty: 1, status: "buyer_confirmed", chosen: 0, h: 90, offers: [{ supplierId: sup.id, pricePerPack: 9800, leadTimeDays: 18, note: "", importerDecision: "approved", importerNote: "Проверено" }] },
     { buyer: "u-demo-b3", rx: true, branch: "b4", name: "Тикагрелор", dosage: "90 мг", form: "Таблетки", qty: 2, status: "buyer_declined", h: 100, offers: [{ supplierId: sup.id, pricePerPack: 2700, leadTimeDays: 12, note: "", importerDecision: "approved", importerNote: "Проверено" }] },
+    // После выбора предложения: отправка SH-A (холод) с двумя заявками одного класса, SH-B (комнатная) с альтернативной точкой на согласовании.
+    { buyer: "u-demo-b2", storage: "cool", rx: true, name: "Лираглутид", dosage: "18 мг/3 мл", form: "Раствор для инъекций", qty: 1, status: "in_transit", chosen: 0, ship: "A", h: 80, offers: [{ supplierId: sup.id, pricePerPack: 11200, leadTimeDays: 20, note: "", importerDecision: "approved", importerNote: "Проверено" }] },
+    { buyer: "u-demo-b3", storage: "cool", rx: true, name: "Инсулин гларгин", dosage: "100 ЕД/мл", form: "Раствор для инъекций", qty: 2, status: "in_transit", chosen: 0, ship: "A", h: 78, offers: [{ supplierId: "u-demo-s2", pricePerPack: 4300, leadTimeDays: 20, note: "", importerDecision: "approved", importerNote: "Проверено" }] },
+    { buyer: buyer.id, name: "Дапаглифлозин", dosage: "10 мг", form: "Таблетки", qty: 1, status: "in_shipment", chosen: 0, ship: "B", alt: { branch: "b3", status: "proposed" }, h: 60, offers: [{ supplierId: sup.id, pricePerPack: 1900, leadTimeDays: 14, note: "", importerDecision: "approved", importerNote: "Проверено" }] },
+    { buyer: "u-demo-b2", name: "Лозартан", dosage: "50 мг", form: "Таблетки", qty: 3, status: "ready_for_pickup", chosen: 0, ship: "C", branch: "b2", h: 140, offers: [{ supplierId: "u-demo-s2", pricePerPack: 640, leadTimeDays: 12, note: "", importerDecision: "approved", importerNote: "Проверено" }] },
+    { buyer: buyer.id, name: "Метформин пролонгированный", dosage: "750 мг", form: "Таблетки", qty: 2, status: "issued", chosen: 0, ship: "C", branch: "b1", h: 200, offers: [{ supplierId: sup.id, pricePerPack: 520, leadTimeDays: 10, note: "", importerDecision: "approved", importerNote: "Проверено" }] },
     { buyer: buyer.id, name: "Апиксабан", dosage: "5 мг", form: "Таблетки", qty: 1, status: "cancelled", h: 120 },
   ];
+  const mkShip = (storage: Shipment["storage"], status: Shipment["status"]): Shipment => ({ id: `sh-demo-${storage}-${Date.now()}`, number: nextNumber("SH"), storage, kind: "global", status, createdAt: ago(70), history: [{ status: "forming", at: ago(70), by: imp.id }, ...(status === "forming" ? [] : [{ status, at: ago(40), by: imp.id }])] });
+  const ships: Record<string, Shipment> = { A: mkShip("cool", "in_transit"), B: mkShip("room", "forming"), C: mkShip("room", "closed") };
+  d.shipments.unshift(...Object.values(ships));
   specs.forEach((sp, i) => {
     const created = ago(sp.h);
     const offers: GlobalOffer[] = (sp.offers ?? []).map((o, j) => ({ id: `of-demo-${i}-${j}`, supplierId: o.supplierId!, pricePerPack: o.pricePerPack!, leadTimeDays: o.leadTimeDays!, note: o.note ?? "", importerDecision: o.importerDecision, importerNote: o.importerNote }));
@@ -64,7 +73,7 @@ export function fillDemoOrders(): FillResult {
     const r: GlobalRequest = {
       id: `g-demo-${i}-${Date.now()}`, number: nextNumber("GL"), buyerId: sp.buyer,
       medicineName: sp.name, dosage: sp.dosage, form: sp.form, qty: sp.qty,
-      comment: `${MARK} тестовая заявка`, prescriptionAck: true, storage: sp.storage ?? "room", prescription: sp.rx ?? false, branchId: sp.branch ?? "b1", chosenOfferId: sp.chosen != null ? offers[sp.chosen]?.id : undefined, status: sp.status, offers, createdAt: created, history: hist,
+      comment: `${MARK} тестовая заявка`, prescriptionAck: true, storage: sp.storage ?? "room", prescription: sp.rx ?? false, branchId: sp.branch ?? "b1", chosenOfferId: sp.chosen != null ? offers[sp.chosen]?.id : undefined, shipmentId: sp.ship ? ships[sp.ship].id : undefined, altBranchId: sp.alt?.branch, altStatus: sp.alt?.status, status: sp.status, offers, createdAt: created, history: hist,
     };
     d.globals.push(r);
   });
